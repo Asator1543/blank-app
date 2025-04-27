@@ -266,10 +266,11 @@ for wk_key, tab in zip(wk_classes, tabs):
                         st.markdown(f"**Team: {team}**")
                         for i in range(1, 4):
                             route_name = f"Route {i}"
+                            st.markdown(f"### {route_name}")  # Überschrift für jede Route
                             max_grips = wk_state['toprope_routes'][route_name]
                             for member in wk_state['teams'][team]:
                                 key = f"{wk_key}_t{i}_{team}_{member}_griff"
-                                st.number_input(f"{member} erreichte Griffnummer", min_value=0, max_value=max_grips, key=key)
+                                st.number_input(f"{member} erreichte Griffnummer für {route_name}", min_value=0, max_value=max_grips, key=key)
 
             st.subheader("⏱️ Speedwertung")
             all_speeds = []  # Initialize the list here
