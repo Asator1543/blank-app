@@ -1,19 +1,6 @@
 {
   "WK 1": {
-    "teams": {
-      "SSG": [
-        "S1",
-        "S2",
-        "S3",
-        "S4"
-      ],
-      "RGG": [
-        "R1",
-        "R2",
-        "R3",
-        "R4"
-      ]
-    },
+    "teams": {},
     "toprope_routes": {
       "Route 1": 40,
       "Route 2": 40,
@@ -21,14 +8,7 @@
     }
   },
   "WK 2": {
-    "teams": {
-      "LLG": [
-        "L1",
-        "L2",
-        "L3",
-        "L4"
-      ]
-    },
+    "teams": {},
     "toprope_routes": {
       "Route 1": 40,
       "Route 2": 40,
@@ -36,14 +16,7 @@
     }
   },
   "WK 3": {
-    "teams": {
-      "Riccarda-Huch": [
-        "R1",
-        "R2",
-        "R3",
-        "R4"
-      ]
-    },
+    "teams": {},
     "toprope_routes": {
       "Route 1": 40,
       "Route 2": 40,
@@ -51,14 +24,7 @@
     }
   },
   "WK 4": {
-    "teams": {
-      "g": [
-        "g1",
-        "g2",
-        "g3",
-        "g4"
-      ]
-    },
+    "teams": {},
     "toprope_routes": {
       "Route 1": 40,
       "Route 2": 40,
