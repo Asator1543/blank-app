@@ -28,7 +28,8 @@ loaded_data = load_data()
 st.set_page_config(page_title="Kletter-Wettkampf", layout="wide")
 st.title("🧗 Kletter-Wettkampf Auswertungstool")
 
-wk_classes = ["WK 1", "WK 2", "WK 3", "WK 4", "WK-Inklusion"]
+# Aktualisierte Wettkampfklassen
+wk_classes = ["WK 1", "WK 2", "WK 3", "WK 4a", "WK 4b", "WK-Inklusion"]
 
 if 'wettkampf_data' not in st.session_state:
     st.session_state.wettkampf_data = loaded_data or {wk: {'teams': {}, 'toprope_routes': {'Route 1': 40, 'Route 2': 40, 'Route 3': 40}} for wk in wk_classes}
@@ -247,6 +248,17 @@ for wk_key, tab in zip(wk_classes, tabs):
                                     st.checkbox(f"Top erreicht: {member}", key=t_key)
 
             st.subheader("🧗‍♂️ Schwierigkeitsklettern")
+            with st.expander("🔧 Routen-Setup für alle Teams"):
+                for i in range(1, 4):
+                    route_name = f"Route {i}"
+                    max_grips = st.number_input(
+                        f"Anzahl Griffe für {route_name}",
+                        min_value=1, max_value=100,
+                        value=wk_state['toprope_routes'].get(route_name, 40),
+                        key=f"{wk_key}_grips_{route_name}"
+                    )
+                    wk_state['toprope_routes'][route_name] = max_grips
+
             if wk_state['teams']:
                 toprope_tabs = st.tabs(list(wk_state['teams'].keys()))
                 for team, ttab in zip(wk_state['teams'].keys(), toprope_tabs):
@@ -254,14 +266,7 @@ for wk_key, tab in zip(wk_classes, tabs):
                         st.markdown(f"**Team: {team}**")
                         for i in range(1, 4):
                             route_name = f"Route {i}"
-                            max_grips = st.number_input(
-                                f"Anzahl Griffe für {route_name}",
-                                min_value=1, max_value=100,
-                                value=wk_state['toprope_routes'].get(route_name, 40),
-                                key=f"{wk_key}_{team}_grips_{route_name}"  # Eindeutiger Schlüssel
-                            )
-                            wk_state['toprope_routes'][route_name] = max_grips
-
+                            max_grips = wk_state['toprope_routes'][route_name]
                             for member in wk_state['teams'][team]:
                                 key = f"{wk_key}_t{i}_{team}_{member}_griff"
                                 st.number_input(f"{member} erreichte Griffnummer", min_value=0, max_value=max_grips, key=key)
@@ -278,70 +283,74 @@ for wk_key, tab in zip(wk_classes, tabs):
                             time = st.number_input(f"Zeit für {member} (Sekunden)", min_value=0.0, max_value=300.0, step=0.01, key=key)
                             all_speeds.append((member, team, time))  # Collect speed data
 
-        st.subheader("🏆 Gesamtwertung")
+            # Überprüfen, ob Teams vorhanden sind, bevor die Gesamtwertung berechnet wird
+            if wk_state['teams']:
+                st.subheader("🏆 Gesamtwertung")
 
-        def get_boulder_score(team):
-            total = 0
-            for i in range(1, 4):
-                scores = []
-                for member in wk_state['teams'][team]:
-                    z = st.session_state.get(f"{wk_key}_b{i}_{team}_{member}_zone", False)
-                    t = st.session_state.get(f"{wk_key}_b{i}_{team}_{member}_top", False)
-                    score = 50 if t else 25 if z else 0
-                    scores.append(score)
-                top_scores = sorted(scores, reverse=True)[:4]
-                total += sum(top_scores)
-            return total
+                def get_boulder_score(team):
+                    total = 0
+                    for i in range(1, 4):
+                        scores = []
+                        for member in wk_state['teams'][team]:
+                            z = st.session_state.get(f"{wk_key}_b{i}_{team}_{member}_zone", False)
+                            t = st.session_state.get(f"{wk_key}_b{i}_{team}_{member}_top", False)
+                            score = 50 if t else 25 if z else 0
+                            scores.append(score)
+                        top_scores = sorted(scores, reverse=True)[:4]
+                        total += sum(top_scores)
+                    return total
 
-        def get_toprope_score(team):
-            total = 0
-            for i in range(1, 4):
-                route = f"Route {i}"
-                max_grips = wk_state['toprope_routes'][route]
-                scores = []
-                for member in wk_state['teams'][team]:
-                    reached = st.session_state.get(f"{wk_key}_t{i}_{team}_{member}_griff", 0)
-                    score = (reached / max_grips) * 100
-                    scores.append(score)
-                top_scores = sorted(scores, reverse=True)[:4]
-                total += sum(top_scores)
-            return total
+                def get_toprope_score(team):
+                    total = 0
+                    for i in range(1, 4):
+                        route = f"Route {i}"
+                        max_grips = wk_state['toprope_routes'][route]
+                        scores = []
+                        for member in wk_state['teams'][team]:
+                            reached = st.session_state.get(f"{wk_key}_t{i}_{team}_{member}_griff", 0)
+                            score = (reached / max_grips) * 100
+                            scores.append(score)
+                        top_scores = sorted(scores, reverse=True)[:4]
+                        total += sum(top_scores)
+                    return total
 
-        def get_speed_scores():
-            valid = [(m, t, time) for m, t, time in all_speeds if time > 0]
-            sorted_by_time = sorted(valid, key=lambda x: x[2])
-            scores = []
-            for rank, (member, team, time) in enumerate(sorted_by_time):
-                score = max(0, 100 - rank * 2)
-                scores.append((member, team, time, score))
-            return scores
+                def get_speed_scores():
+                    valid = [(m, t, time) for m, t, time in all_speeds if time > 0]
+                    sorted_by_time = sorted(valid, key=lambda x: x[2])
+                    scores = []
+                    for rank, (member, team, time) in enumerate(sorted_by_time):
+                        score = max(0, 100 - rank * 2)
+                        scores.append((member, team, time, score))
+                    return scores
 
-        speed_scores = get_speed_scores()
+                speed_scores = get_speed_scores()
 
-        team_results = []
-        for team in wk_state['teams']:
-            b = get_boulder_score(team)
-            t = get_toprope_score(team)
-            team_speed_scores = sorted([score for m, tname, _, score in speed_scores if tname == team], reverse=True)[:4]
-            s = sum(team_speed_scores)
-            team_score = (1/5)*s + (2/5)*t + (2/5)*b
-            team_results.append((team, round(team_score, 2)))
+                team_results = []
+                for team in wk_state['teams']:
+                    b = get_boulder_score(team)
+                    t = get_toprope_score(team)
+                    team_speed_scores = sorted([score for m, tname, _, score in speed_scores if tname == team], reverse=True)[:4]
+                    s = sum(team_speed_scores)
+                    team_score = (1/5)*s + (2/5)*t + (2/5)*b
+                    team_results.append((team, round(team_score, 2)))
 
-        st.subheader("🔹 Team-Rangliste")
-        result_df = pd.DataFrame(sorted(team_results, key=lambda x: x[1], reverse=True), columns=["Team", "Punkte"])
-        result_df.index += 1
-        st.dataframe(result_df, use_container_width=True)
+                st.subheader("🔹 Team-Rangliste")
+                result_df = pd.DataFrame(sorted(team_results, key=lambda x: x[1], reverse=True), columns=["Team", "Punkte"])
+                result_df.index += 1
+                st.dataframe(result_df, use_container_width=True)
 
-        st.subheader("⏱️ Einzel-Speedwertung")
-        speed_df = pd.DataFrame(speed_scores, columns=["Teilnehmer", "Team", "Zeit (s)", "Punkte"])
-        speed_df = speed_df.sort_values(by="Zeit (s)")
-        speed_df.index += 1
-        st.dataframe(speed_df, use_container_width=True)
+                st.subheader("⏱️ Einzel-Speedwertung")
+                speed_df = pd.DataFrame(speed_scores, columns=["Teilnehmer", "Team", "Zeit (s)", "Punkte"])
+                speed_df = speed_df.sort_values(by="Zeit (s)")
+                speed_df.index += 1
+                st.dataframe(speed_df, use_container_width=True)
 
-        pdf_data = generate_results_pdf(wk_key, result_df, speed_df)
-        st.download_button(
-            label="📄 Ergebnisse als PDF exportieren",
-            data=pdf_data,
-            file_name=f"{wk_key}_ergebnisse.pdf",
-            mime="application/pdf"
-        )
+                pdf_data = generate_results_pdf(wk_key, result_df, speed_df)
+                st.download_button(
+                    label="📄 Ergebnisse als PDF exportieren",
+                    data=pdf_data,
+                    file_name=f"{wk_key}_ergebnisse.pdf",
+                    mime="application/pdf"
+                )
+            else:
+                st.info("Bitte mindestens ein Team hinzufügen, um die Gesamtwertung zu berechnen.")
