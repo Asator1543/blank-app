@@ -6,6 +6,24 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+import json
+import os
+
+DATA_PATH = "save_data.json"
+
+def save_data(data):
+    with open(DATA_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def load_data():
+    if os.path.exists(DATA_PATH):
+        with open(DATA_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    else:
+        return {}
+
+# Lade bestehende Daten
+loaded_data = load_data()
 
 st.set_page_config(page_title="Kletter-Wettkampf", layout="wide")
 st.title("🧗 Kletter-Wettkampf Auswertungstool")
@@ -13,13 +31,43 @@ st.title("🧗 Kletter-Wettkampf Auswertungstool")
 wk_classes = ["WK 1", "WK 2", "WK 3", "WK 4", "WK-Inklusion"]
 
 if 'wettkampf_data' not in st.session_state:
-    st.session_state.wettkampf_data = {}
-for wk in wk_classes:
-    if wk not in st.session_state.wettkampf_data:
-        st.session_state.wettkampf_data[wk] = {
-            'teams': {},
-            'toprope_routes': {'Route 1': 40, 'Route 2': 40, 'Route 3': 40},
-        }
+    st.session_state.wettkampf_data = loaded_data or {wk: {'teams': {}, 'toprope_routes': {'Route 1': 40, 'Route 2': 40, 'Route 3': 40}} for wk in wk_classes}
+
+def download_teams_csv():
+    all_teams = []
+    for wk_key, wk_data in st.session_state.wettkampf_data.items():
+        for team_name, members in wk_data['teams'].items():
+            for member in members:
+                all_teams.append({'Wettkampfklasse': wk_key, 'Team': team_name, 'Mitglied': member})
+    df_teams = pd.DataFrame(all_teams)
+    return df_teams.to_csv(index=False).encode('utf-8')
+
+def upload_teams_csv(uploaded_file):
+    df = pd.read_csv(uploaded_file)
+    # Reset the teams
+    for wk in wk_classes:
+        st.session_state.wettkampf_data[wk]['teams'] = {}
+    # Populate the teams
+    for _, row in df.iterrows():
+        wk_key = row['Wettkampfklasse']
+        team_name = row['Team']
+        member = row['Mitglied']
+        if team_name not in st.session_state.wettkampf_data[wk_key]['teams']:
+            st.session_state.wettkampf_data[wk_key]['teams'][team_name] = []
+        st.session_state.wettkampf_data[wk_key]['teams'][team_name].append(member)
+    save_data(st.session_state.wettkampf_data)
+
+st.download_button(
+    label="📥 Teams als CSV herunterladen",
+    data=download_teams_csv(),
+    file_name='teams.csv',
+    mime='text/csv'
+)
+
+uploaded_file = st.file_uploader("CSV-Datei hochladen", type="csv")
+if uploaded_file is not None:
+    upload_teams_csv(uploaded_file)
+    st.success("Teams erfolgreich geladen!")
 
 def generate_results_pdf(wk_key, result_df, speed_df):
     buffer = BytesIO()
@@ -157,6 +205,7 @@ for wk_key, tab in zip(wk_classes, tabs):
             if submitted and team_name and 4 <= len(members) <= 6:
                 wk_state['teams'][team_name] = members
                 st.success(f"Team '{team_name}' hinzugefügt.")
+                save_data(st.session_state.wettkampf_data)
 
         if wk_state['teams']:
             with st.expander("✏️ Team bearbeiten"):
@@ -168,10 +217,10 @@ for wk_key, tab in zip(wk_classes, tabs):
                     if 4 <= len(edited_members) <= 6:
                         wk_state['teams'][team_to_edit] = edited_members
                         st.success(f"Team '{team_to_edit}' wurde aktualisiert.")
+                        save_data(st.session_state.wettkampf_data)
                     else:
                         st.error("Ein Team muss zwischen 4 und 6 Mitglieder haben.")
 
-        if wk_state['teams']:
             laufzettel_pdf = generate_laufzettel_pdfs(wk_key, wk_state['teams'])
             st.download_button(
                 label="📄 Laufzettel für alle Teams herunterladen",
@@ -180,48 +229,54 @@ for wk_key, tab in zip(wk_classes, tabs):
                 mime="application/pdf"
             )
 
-        st.subheader("💪 Boulderwertung")
-        boulder_tabs = st.tabs([f"Boulder {i}" for i in range(1, 4)])
-        for i, btab in enumerate(boulder_tabs, start=1):
-            with btab:
-                for team, members in wk_state['teams'].items():
-                    st.markdown(f"**{team}**")
-                    for member in members:
-                        z_key = f"{wk_key}_b{i}_{team}_{member}_zone"
-                        t_key = f"{wk_key}_b{i}_{team}_{member}_top"
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.checkbox(f"Zone erreicht: {member}", key=z_key)
-                        with col2:
-                            st.checkbox(f"Top erreicht: {member}", key=t_key)
+            st.subheader("💪 Boulderwertung")
+            if wk_state['teams']:
+                boulder_tabs = st.tabs(list(wk_state['teams'].keys()))
+                for team, btab in zip(wk_state['teams'].keys(), boulder_tabs):
+                    with btab:
+                        st.markdown(f"**Team: {team}**")
+                        for i in range(1, 4):
+                            st.markdown(f"Boulder {i}")
+                            for member in wk_state['teams'][team]:
+                                z_key = f"{wk_key}_b{i}_{team}_{member}_zone"
+                                t_key = f"{wk_key}_b{i}_{team}_{member}_top"
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.checkbox(f"Zone erreicht: {member}", key=z_key)
+                                with col2:
+                                    st.checkbox(f"Top erreicht: {member}", key=t_key)
 
-        st.subheader("🧗‍♂️ Schwierigkeitsklettern")
-        toprope_tabs = st.tabs([f"Route {i}" for i in range(1, 4)])
-        for i, ttab in enumerate(toprope_tabs, start=1):
-            route_name = f"Route {i}"
-            with ttab:
-                max_grips = st.number_input(
-                    f"Anzahl Griffe für {route_name}",
-                    min_value=1, max_value=100,
-                    value=wk_state['toprope_routes'].get(route_name, 40),
-                    key=f"{wk_key}_grips_{route_name}"
-                )
-                wk_state['toprope_routes'][route_name] = max_grips
+            st.subheader("🧗‍♂️ Schwierigkeitsklettern")
+            if wk_state['teams']:
+                toprope_tabs = st.tabs(list(wk_state['teams'].keys()))
+                for team, ttab in zip(wk_state['teams'].keys(), toprope_tabs):
+                    with ttab:
+                        st.markdown(f"**Team: {team}**")
+                        for i in range(1, 4):
+                            route_name = f"Route {i}"
+                            max_grips = st.number_input(
+                                f"Anzahl Griffe für {route_name}",
+                                min_value=1, max_value=100,
+                                value=wk_state['toprope_routes'].get(route_name, 40),
+                                key=f"{wk_key}_{team}_grips_{route_name}"  # Eindeutiger Schlüssel
+                            )
+                            wk_state['toprope_routes'][route_name] = max_grips
 
-                for team, members in wk_state['teams'].items():
-                    st.markdown(f"**{team}**")
-                    for member in members:
-                        key = f"{wk_key}_t{i}_{team}_{member}_griff"
-                        st.number_input(f"{member} erreichte Griffnummer", min_value=0, max_value=max_grips, key=key)
+                            for member in wk_state['teams'][team]:
+                                key = f"{wk_key}_t{i}_{team}_{member}_griff"
+                                st.number_input(f"{member} erreichte Griffnummer", min_value=0, max_value=max_grips, key=key)
 
-        st.subheader("⏱️ Speedwertung")
-        all_speeds = []
-        for team, members in wk_state['teams'].items():
-            st.subheader(f"{team}")
-            for member in members:
-                key = f"{wk_key}_speed_{team}_{member}"
-                time = st.number_input(f"Zeit für {member} (Sekunden)", min_value=0.0, max_value=300.0, step=0.01, key=key)
-                all_speeds.append((member, team, time))
+            st.subheader("⏱️ Speedwertung")
+            all_speeds = []  # Initialize the list here
+            if wk_state['teams']:
+                speed_tabs = st.tabs(list(wk_state['teams'].keys()))
+                for team, stab in zip(wk_state['teams'].keys(), speed_tabs):
+                    with stab:
+                        st.markdown(f"**Team: {team}**")
+                        for member in wk_state['teams'][team]:
+                            key = f"{wk_key}_speed_{team}_{member}"
+                            time = st.number_input(f"Zeit für {member} (Sekunden)", min_value=0.0, max_value=300.0, step=0.01, key=key)
+                            all_speeds.append((member, team, time))  # Collect speed data
 
         st.subheader("🏆 Gesamtwertung")
 
@@ -267,7 +322,8 @@ for wk_key, tab in zip(wk_classes, tabs):
         for team in wk_state['teams']:
             b = get_boulder_score(team)
             t = get_toprope_score(team)
-            s = sum([score for m, tname, _, score in speed_scores if tname == team])
+            team_speed_scores = sorted([score for m, tname, _, score in speed_scores if tname == team], reverse=True)[:4]
+            s = sum(team_speed_scores)
             team_score = (1/5)*s + (2/5)*t + (2/5)*b
             team_results.append((team, round(team_score, 2)))
 
